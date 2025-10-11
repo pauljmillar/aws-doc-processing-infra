@@ -1,0 +1,54 @@
+{
+  "description": "Extract detailed information from invoices",
+  "fields": {
+    "vendor_name": {
+      "type": "string",
+      "description": "Name of the vendor/company issuing the invoice",
+      "required": true
+    },
+    "invoice_number": {
+      "type": "string",
+      "description": "Invoice number or reference",
+      "required": true
+    },
+    "invoice_date": {
+      "type": "string",
+      "description": "Date of the invoice (ISO format if possible)",
+      "required": true
+    },
+    "due_date": {
+      "type": "string",
+      "description": "Payment due date (ISO format if possible)"
+    },
+    "total_amount": {
+      "type": "string",
+      "description": "Total amount due",
+      "required": true
+    },
+    "currency": {
+      "type": "string",
+      "description": "Currency code (USD, EUR, etc.)"
+    },
+    "line_items": {
+      "type": "array",
+      "description": "List of line items on the invoice",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": "string",
+          "quantity": "string",
+          "unit_price": "string",
+          "total": "string"
+        }
+      }
+    },
+    "tax_amount": {
+      "type": "string",
+      "description": "Tax amount if specified"
+    },
+    "payment_terms": {
+      "type": "string",
+      "description": "Payment terms (e.g., Net 30, Due on receipt)"
+    }
+  }
+}

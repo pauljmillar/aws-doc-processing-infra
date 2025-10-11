@@ -1,0 +1,52 @@
+{
+  "description": "Classify the document type and extract basic information",
+  "fields": {
+    "document_type": {
+      "type": "string",
+      "description": "Type of document - must be one of: promotion, invoice, receipt, contract, letter, other",
+      "enum": ["promotion", "invoice", "receipt", "contract", "letter", "other"],
+      "required": true
+    },
+    "confidence": {
+      "type": "number",
+      "description": "Confidence score from 0 to 1",
+      "required": true
+    },
+    "industry": {
+      "type": "string",
+      "description": "Industry classification - must be one of: Credit Card, Banking, Insurance, Investment, Mortgage & Loans, Retail, Shipping, Technology, Telecoms, Travel, Auto, Tobacco",
+      "enum": ["Credit Card", "Banking", "Insurance", "Investment", "Mortgage & Loans", "Retail", "Shipping", "Technology", "Telecoms", "Travel", "Auto", "Tobacco"],
+      "required": false
+    },
+    "category": {
+      "type": "string",
+      "description": "Category within industry - for Credit Card industry: Affinity Cards, Balance Transfer, Charge Card, Co-Branded, Corporate, Lifestyle Cards, Credit Cards",
+      "required": false
+    },
+    "primary_company": {
+      "type": "string",
+      "description": "Primary company making the offer or mentioned in the document",
+      "required": false
+    },
+    "secondary_company": {
+      "type": "string",
+      "description": "Secondary company in co-branded offers (e.g., American Airlines + Mastercard)",
+      "required": false
+    },
+    "key_entities": {
+      "type": "array",
+      "description": "List of key entities found in the document",
+      "items": {
+        "type": "string"
+      }
+    },
+    "date_found": {
+      "type": "string",
+      "description": "Date found in the document (ISO format if possible)"
+    },
+    "amount_found": {
+      "type": "string",
+      "description": "Monetary amount found in the document"
+    }
+  }
+}
