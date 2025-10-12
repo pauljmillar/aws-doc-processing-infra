@@ -67,8 +67,10 @@ aws s3 cp document.jpg s3://bucket/incoming/document-name_1.jpg
 3. Create/update DynamoDB document record
 4. Start Step Functions execution
 
-**Filename Pattern**: `{document_id}_{page_number}.{extension}`
-- Example: `invoice-123_1.jpg`, `contract-456_2.pdf`
+**Filename Pattern**: `{document_id}_{page_number}.{extension}` or `{document_id}-{page_number}.{extension}`
+- Example: `invoice-123_1.jpg`, `contract-456_2.pdf`, `report-789-1.png`, `document-abc-2.pdf`
+- **Multi-page documents**: Files with the same `document_id` (before the separator) will be grouped together
+- **Supported separators**: Both underscores (`_`) and dashes (`-`) are supported
 
 **DynamoDB Record Created**:
 ```json
