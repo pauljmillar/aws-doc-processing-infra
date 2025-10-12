@@ -141,6 +141,7 @@ The system classifies documents into these types:
 ## 📚 Documentation
 
 - **[AGENT.md](AGENT.md)**: Comprehensive development guidelines for AI agents
+- **[docs/workflow-overview.md](docs/workflow-overview.md)**: Complete workflow documentation with architecture diagrams
 - **[docs/](docs/)**: Detailed documentation for major functionality
 - **[sample-schemas/](sample-schemas/)**: Document classification schemas
 
