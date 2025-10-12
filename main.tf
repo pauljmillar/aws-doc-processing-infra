@@ -14,7 +14,7 @@ provider "aws" {
 }
 
 locals {
-  bucket_name       = "${var.project_name}-bucket-${var.region}"
+  bucket_name       = "${var.project_name}-bucket"
   queue_name        = "${var.project_name}-queue"
   table_name        = "${var.project_name}-documents"
   state_machine_name = "${var.project_name}-workflow"
