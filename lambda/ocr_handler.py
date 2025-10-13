@@ -43,22 +43,75 @@ def lambda_handler(event, context):
         textract_jobs = doc_item.get('textract_jobs', {})
         ocr_text_keys = doc_item.get('ocr_text_keys', [])
         
+        # Determine processing strategy based on page count
+        is_single_page = len(pages) == 1
+        print(f"Processing {len(pages)} page(s) - {'SINGLE PAGE (synchronous)' if is_single_page else 'MULTI-PAGE (asynchronous)'}")
+        
         # Process each page
         for page_key in pages:
             if page_key in textract_jobs:
-                # Check if Textract job is complete
-                job_id = textract_jobs[page_key]
+                # Check if Textract job is complete (async only)
+                if not is_single_page:
+                    job_id = textract_jobs[page_key]
+                    try:
+                        response = textract.get_document_text_detection(JobId=job_id)
+                        job_status = response['JobStatus']
+                        
+                        if job_status == 'SUCCEEDED':
+                            # Extract text from Textract response
+                            text_content = extract_text_from_textract_response(response)
+                            
+                            # Save text to S3
+                            page_number = pages.index(page_key) + 1
+                            text_key = f"staging/{document_id}/text_page_{page_number}.txt"
+                            
+                            s3.put_object(
+                                Bucket=bucket_name,
+                                Key=text_key,
+                                Body=text_content.encode('utf-8'),
+                                ContentType='text/plain'
+                            )
+                            
+                            if text_key not in ocr_text_keys:
+                                ocr_text_keys.append(text_key)
+                            
+                            print(f"Completed OCR for {page_key}, saved to {text_key}")
+                            
+                        elif job_status == 'FAILED':
+                            error_message = response.get('StatusMessage', 'Unknown error')
+                            raise Exception(f"Textract job failed for {page_key}: {error_message}")
+                            
+                        else:
+                            print(f"Textract job {job_id} still in progress: {job_status}")
+                            continue
+                            
+                    except textract.exceptions.InvalidJobIdException:
+                        # Job doesn't exist, start new one
+                        pass
+                    except Exception as e:
+                        print(f"Error checking Textract job: {str(e)}")
+                        raise
+            
+            # Process page (synchronous for single, async for multi)
+            if page_key not in textract_jobs:
                 try:
-                    response = textract.get_document_text_detection(JobId=job_id)
-                    job_status = response['JobStatus']
-                    
-                    if job_status == 'SUCCEEDED':
-                        # Extract text from Textract response
+                    if is_single_page:
+                        # Use synchronous Textract for single pages (faster)
+                        print(f"Processing single page synchronously: {page_key}")
+                        response = textract.detect_document_text(
+                            Document={
+                                'S3Object': {
+                                    'Bucket': bucket_name,
+                                    'Name': page_key
+                                }
+                            }
+                        )
+                        
+                        # Extract text immediately
                         text_content = extract_text_from_textract_response(response)
                         
                         # Save text to S3
-                        page_number = pages.index(page_key) + 1
-                        text_key = f"staging/{document_id}/text_page_{page_number}.txt"
+                        text_key = f"staging/{document_id}/text_page_1.txt"
                         
                         s3.put_object(
                             Bucket=bucket_name,
@@ -70,43 +123,30 @@ def lambda_handler(event, context):
                         if text_key not in ocr_text_keys:
                             ocr_text_keys.append(text_key)
                         
-                        print(f"Completed OCR for {page_key}, saved to {text_key}")
+                        # Mark as completed
+                        textract_jobs[page_key] = 'SYNC_COMPLETE'
                         
-                    elif job_status == 'FAILED':
-                        error_message = response.get('StatusMessage', 'Unknown error')
-                        raise Exception(f"Textract job failed for {page_key}: {error_message}")
+                        print(f"Completed synchronous OCR for {page_key}, saved to {text_key}")
                         
                     else:
-                        print(f"Textract job {job_id} still in progress: {job_status}")
-                        continue
-                        
-                except textract.exceptions.InvalidJobIdException:
-                    # Job doesn't exist, start new one
-                    pass
-                except Exception as e:
-                    print(f"Error checking Textract job: {str(e)}")
-                    raise
-            
-            # Start new Textract job if not already started
-            if page_key not in textract_jobs:
-                try:
-                    # Start asynchronous text detection
-                    response = textract.start_document_text_detection(
-                        DocumentLocation={
-                            'S3Object': {
-                                'Bucket': bucket_name,
-                                'Name': page_key
+                        # Use asynchronous Textract for multi-page documents
+                        print(f"Starting async Textract job for: {page_key}")
+                        response = textract.start_document_text_detection(
+                            DocumentLocation={
+                                'S3Object': {
+                                    'Bucket': bucket_name,
+                                    'Name': page_key
+                                }
                             }
-                        }
-                    )
-                    
-                    job_id = response['JobId']
-                    textract_jobs[page_key] = job_id
-                    
-                    print(f"Started Textract job {job_id} for {page_key}")
+                        )
+                        
+                        job_id = response['JobId']
+                        textract_jobs[page_key] = job_id
+                        
+                        print(f"Started Textract job {job_id} for {page_key}")
                     
                 except Exception as e:
-                    print(f"Error starting Textract job for {page_key}: {str(e)}")
+                    print(f"Error processing {page_key}: {str(e)}")
                     raise
         
         # Update DynamoDB with current state
@@ -127,12 +167,22 @@ def lambda_handler(event, context):
                 all_complete = False
                 break
             
-            try:
-                response = textract.get_document_text_detection(JobId=textract_jobs[page_key])
-                if response['JobStatus'] != 'SUCCEEDED':
+            job_id = textract_jobs[page_key]
+            
+            if is_single_page and job_id == 'SYNC_COMPLETE':
+                # Single page synchronous processing is complete
+                continue
+            elif not is_single_page:
+                # Multi-page async processing - check job status
+                try:
+                    response = textract.get_document_text_detection(JobId=job_id)
+                    if response['JobStatus'] != 'SUCCEEDED':
+                        all_complete = False
+                        break
+                except:
                     all_complete = False
                     break
-            except:
+            else:
                 all_complete = False
                 break
         

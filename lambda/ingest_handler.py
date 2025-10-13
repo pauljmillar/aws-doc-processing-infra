@@ -3,6 +3,7 @@ import os
 import json
 import boto3
 import re
+import uuid
 from datetime import datetime, timedelta
 from urllib.parse import unquote_plus
 
@@ -62,22 +63,52 @@ def lambda_handler(event, context):
                 if not key.startswith('incoming/'):
                     continue
                 
-                # Extract document ID from filename
-                # Expected format: incoming/{document_id}_{page_number}.{ext} or {document_id}-{page_number}.{ext}
+                # Extract filename information
+                # Support both formats: filename.ext OR filename_page.ext OR filename-page.ext
                 filename = key.split('/')[-1]
-                match = re.match(r'^(.+?)[_-](\d+)\.(.+)$', filename)
-            
-            if not match:
-                print(f"Skipping file with unexpected format: {filename}")
-                continue
                 
-            document_id = match.group(1)
-            page_number = int(match.group(2))
-            file_extension = match.group(3)
+                # Try to match filename with page number first
+                match = re.match(r'^(.+?)[_-](\d+)\.(.+)$', filename)
+                if match:
+                    # Filename with page number: document_1.jpg -> document, 1, jpg
+                    base_filename = match.group(1)
+                    page_number = int(match.group(2))
+                    file_extension = match.group(3)
+                else:
+                    # Try to match filename without page number: document.jpg -> document, 1, jpg
+                    match = re.match(r'^(.+)\.(.+)$', filename)
+                    if match:
+                        base_filename = match.group(1)
+                        page_number = 1  # Default to page 1 for single files
+                        file_extension = match.group(2)
+                    else:
+                        print(f"Skipping file with unexpected format: {filename}")
+                        continue
             
-            # Validate file type
+            # Generate unique document ID using pure GUID
+            document_id = str(uuid.uuid4())
+            print(f"Generated document ID: {document_id} for base filename: {base_filename}")
+            
+            # Validate file type (extension)
             if file_extension.lower() not in ['jpg', 'jpeg', 'png', 'pdf']:
                 print(f"Skipping unsupported file type: {file_extension}")
+                continue
+            
+            # Validate MIME type to prevent Textract failures
+            try:
+                response = s3.head_object(Bucket=bucket, Key=key)
+                content_type = response.get('ContentType', '')
+                
+                # Validate MIME type
+                valid_mime_types = ['image/jpeg', 'image/png', 'application/pdf']
+                if content_type not in valid_mime_types:
+                    print(f"Skipping file with invalid MIME type: {content_type} for {filename}")
+                    continue
+                    
+                print(f"Validated MIME type: {content_type} for {filename}")
+                
+            except Exception as e:
+                print(f"Error validating MIME type for {filename}: {str(e)}")
                 continue
             
             print(f"Processing document: {document_id}, page: {page_number}")
@@ -92,6 +123,7 @@ def lambda_handler(event, context):
                     # Create new document record
                     doc_item = {
                         'document_id': document_id,
+                        'original_filename': base_filename,  # Store original filename
                         'status': 'AWAITING_PAGES',
                         'pages_received': 0,
                         'pages': [],
