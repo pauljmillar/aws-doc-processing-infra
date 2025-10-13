@@ -67,10 +67,6 @@ resource "aws_dynamodb_table" "documents" {
     type = "S"
   }
 
-  attribute {
-    name = "original_filename"
-    type = "S"
-  }
 
   # Global Secondary Index for querying by status
   global_secondary_index {

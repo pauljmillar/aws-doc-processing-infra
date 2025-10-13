@@ -59,6 +59,9 @@ def lambda_handler(event, context):
         # Process through LLM pipeline
         results = process_document_with_llm(document_text, schemas, openai_key)
         
+        # Extract document_type from classification results
+        document_type = results.get('document_analysis', {}).get('classification', {}).get('document_type', 'unknown')
+        
         # Save results to S3
         result_key = f"results/{document_id}_response.json"
         s3.put_object(
@@ -71,15 +74,16 @@ def lambda_handler(event, context):
         # Move original files to complete folder
         moved_files = move_files_to_complete(s3, bucket_name, document_id, pages)
         
-        # Update DynamoDB with completion
+        # Update DynamoDB with completion and document_type
         table.update_item(
             Key={'document_id': document_id},
-            UpdateExpression='SET #status = :status, result_key = :result, moved_files = :files, updated_at = :timestamp',
+            UpdateExpression='SET #status = :status, result_key = :result, moved_files = :files, document_type = :doc_type, updated_at = :timestamp',
             ExpressionAttributeNames={'#status': 'status'},
             ExpressionAttributeValues={
                 ':status': 'COMPLETE',
                 ':result': result_key,
                 ':files': moved_files,
+                ':doc_type': document_type,
                 ':timestamp': datetime.utcnow().isoformat()
             }
         )
