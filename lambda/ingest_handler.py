@@ -123,7 +123,7 @@ def lambda_handler(event, context):
                         # Create new document record
                         doc_item = {
                             'document_id': document_id,
-                            'original_filename': base_filename,  # Store original filename
+                            'original_filename': filename,  # Store full original filename
                             'status': 'AWAITING_PAGES',
                             'pages_received': 0,
                             'pages': [],
@@ -152,10 +152,11 @@ def lambda_handler(event, context):
                     ':timestamp': datetime.utcnow().isoformat()
                 }
                 
-                # If this is the first page, set initial status
+                # If this is the first page, set initial status and original_filename
                 if len(pages) == 1:
-                    update_expression += ", #status = :status"
+                    update_expression += ", #status = :status, original_filename = :filename"
                     expression_values[':status'] = 'AWAITING_PAGES'
+                    expression_values[':filename'] = filename
                 
                 table.update_item(
                     Key={'document_id': document_id},
