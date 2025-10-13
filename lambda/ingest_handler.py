@@ -84,132 +84,132 @@ def lambda_handler(event, context):
                     else:
                         print(f"Skipping file with unexpected format: {filename}")
                         continue
-            
-            # Generate unique document ID using pure GUID
-            document_id = str(uuid.uuid4())
-            print(f"Generated document ID: {document_id} for base filename: {base_filename}")
-            
-            # Validate file type (extension)
-            if file_extension.lower() not in ['jpg', 'jpeg', 'png', 'pdf']:
-                print(f"Skipping unsupported file type: {file_extension}")
-                continue
-            
-            # Validate MIME type to prevent Textract failures
-            try:
-                response = s3.head_object(Bucket=bucket, Key=key)
-                content_type = response.get('ContentType', '')
                 
-                # Validate MIME type
-                valid_mime_types = ['image/jpeg', 'image/png', 'application/pdf']
-                if content_type not in valid_mime_types:
-                    print(f"Skipping file with invalid MIME type: {content_type} for {filename}")
+                # Generate unique document ID using pure GUID
+                document_id = str(uuid.uuid4())
+                print(f"Generated document ID: {document_id} for base filename: {base_filename}")
+                
+                # Validate file type (extension)
+                if file_extension.lower() not in ['jpg', 'jpeg', 'png', 'pdf']:
+                    print(f"Skipping unsupported file type: {file_extension}")
                     continue
-                    
-                print(f"Validated MIME type: {content_type} for {filename}")
                 
-            except Exception as e:
-                print(f"Error validating MIME type for {filename}: {str(e)}")
-                continue
-            
-            print(f"Processing document: {document_id}, page: {page_number}")
-            
-            # Get or create document record
-            try:
-                response = table.get_item(Key={'document_id': document_id})
-                if 'Item' in response:
-                    doc_item = response['Item']
-                    status = doc_item.get('status', 'AWAITING_PAGES')
-                else:
-                    # Create new document record
-                    doc_item = {
-                        'document_id': document_id,
-                        'original_filename': base_filename,  # Store original filename
-                        'status': 'AWAITING_PAGES',
-                        'pages_received': 0,
-                        'pages': [],
-                        'textract_jobs': {},
-                        'ocr_text_keys': [],
-                        'retries': 0,
-                        'created_at': datetime.utcnow().isoformat(),
-                        'updated_at': datetime.utcnow().isoformat(),
-                        'ttl': int((datetime.utcnow() + timedelta(days=30)).timestamp())
-                    }
-                    status = 'AWAITING_PAGES'
-            except Exception as e:
-                print(f"Error accessing DynamoDB: {str(e)}")
-                raise
-            
-            # Update document with new page
-            pages = doc_item.get('pages', [])
-            if key not in pages:
-                pages.append(key)
-            
-            # Update DynamoDB record
-            update_expression = "SET pages = :pages, pages_received = :count, updated_at = :timestamp"
-            expression_values = {
-                ':pages': pages,
-                ':count': len(pages),
-                ':timestamp': datetime.utcnow().isoformat()
-            }
-            
-            # If this is the first page, set initial status
-            if len(pages) == 1:
-                update_expression += ", #status = :status"
-                expression_values[':status'] = 'AWAITING_PAGES'
-            
-            table.update_item(
-                Key={'document_id': document_id},
-                UpdateExpression=update_expression,
-                ExpressionAttributeNames={'#status': 'status'},
-                ExpressionAttributeValues=expression_values
-            )
-            
-            # Check if we should start processing
-            # For now, start processing after first page (can be enhanced with expected_pages)
-            if len(pages) == 1 and status == 'AWAITING_PAGES':
-                # Start Step Functions execution
-                execution_input = {
-                    'document_id': document_id,
-                    'pages': pages,
-                    'status': 'OCR_RUNNING'
-                }
-                
+                # Validate MIME type to prevent Textract failures
                 try:
-                    execution_response = stepfunctions.start_execution(
-                        stateMachineArn=state_machine_arn,
-                        name=f"{document_id}-{int(datetime.utcnow().timestamp())}",
-                        input=json.dumps(execution_input)
-                    )
+                    response = s3.head_object(Bucket=bucket, Key=key)
+                    content_type = response.get('ContentType', '')
                     
-                    # Update document status
-                    table.update_item(
-                        Key={'document_id': document_id},
-                        UpdateExpression="SET #status = :status, step_function_execution_arn = :arn, updated_at = :timestamp",
-                        ExpressionAttributeNames={'#status': 'status'},
-                        ExpressionAttributeValues={
-                            ':status': 'OCR_RUNNING',
-                            ':arn': execution_response['executionArn'],
-                            ':timestamp': datetime.utcnow().isoformat()
-                        }
-                    )
-                    
-                    print(f"Started Step Functions execution for document {document_id}")
-                    processed_documents.append(document_id)
+                    # Validate MIME type
+                    valid_mime_types = ['image/jpeg', 'image/png', 'application/pdf']
+                    if content_type not in valid_mime_types:
+                        print(f"Skipping file with invalid MIME type: {content_type} for {filename}")
+                        continue
+                        
+                    print(f"Validated MIME type: {content_type} for {filename}")
                     
                 except Exception as e:
-                    print(f"Error starting Step Functions: {str(e)}")
-                    # Update status to failed
-                    table.update_item(
-                        Key={'document_id': document_id},
-                        UpdateExpression="SET #status = :status, last_error = :error, updated_at = :timestamp",
-                        ExpressionAttributeNames={'#status': 'status'},
-                        ExpressionAttributeValues={
-                            ':status': 'FAILED',
-                            ':error': str(e),
-                            ':timestamp': datetime.utcnow().isoformat()
+                    print(f"Error validating MIME type for {filename}: {str(e)}")
+                    continue
+                
+                print(f"Processing document: {document_id}, page: {page_number}")
+                
+                # Get or create document record
+                try:
+                    response = table.get_item(Key={'document_id': document_id})
+                    if 'Item' in response:
+                        doc_item = response['Item']
+                        status = doc_item.get('status', 'AWAITING_PAGES')
+                    else:
+                        # Create new document record
+                        doc_item = {
+                            'document_id': document_id,
+                            'original_filename': base_filename,  # Store original filename
+                            'status': 'AWAITING_PAGES',
+                            'pages_received': 0,
+                            'pages': [],
+                            'textract_jobs': {},
+                            'ocr_text_keys': [],
+                            'retries': 0,
+                            'created_at': datetime.utcnow().isoformat(),
+                            'updated_at': datetime.utcnow().isoformat(),
+                            'ttl': int((datetime.utcnow() + timedelta(days=30)).timestamp())
                         }
-                    )
+                        status = 'AWAITING_PAGES'
+                except Exception as e:
+                    print(f"Error accessing DynamoDB: {str(e)}")
                     raise
+                
+                # Update document with new page
+                pages = doc_item.get('pages', [])
+                if key not in pages:
+                    pages.append(key)
+                
+                # Update DynamoDB record
+                update_expression = "SET pages = :pages, pages_received = :count, updated_at = :timestamp"
+                expression_values = {
+                    ':pages': pages,
+                    ':count': len(pages),
+                    ':timestamp': datetime.utcnow().isoformat()
+                }
+                
+                # If this is the first page, set initial status
+                if len(pages) == 1:
+                    update_expression += ", #status = :status"
+                    expression_values[':status'] = 'AWAITING_PAGES'
+                
+                table.update_item(
+                    Key={'document_id': document_id},
+                    UpdateExpression=update_expression,
+                    ExpressionAttributeNames={'#status': 'status'},
+                    ExpressionAttributeValues=expression_values
+                )
+                
+                # Check if we should start processing
+                # For now, start processing after first page (can be enhanced with expected_pages)
+                if len(pages) == 1 and status == 'AWAITING_PAGES':
+                    # Start Step Functions execution
+                    execution_input = {
+                        'document_id': document_id,
+                        'pages': pages,
+                        'status': 'OCR_RUNNING'
+                    }
+                    
+                    try:
+                        execution_response = stepfunctions.start_execution(
+                            stateMachineArn=state_machine_arn,
+                            name=f"{document_id}-{int(datetime.utcnow().timestamp())}",
+                            input=json.dumps(execution_input)
+                        )
+                        
+                        # Update document status
+                        table.update_item(
+                            Key={'document_id': document_id},
+                            UpdateExpression="SET #status = :status, step_function_execution_arn = :arn, updated_at = :timestamp",
+                            ExpressionAttributeNames={'#status': 'status'},
+                            ExpressionAttributeValues={
+                                ':status': 'OCR_RUNNING',
+                                ':arn': execution_response['executionArn'],
+                                ':timestamp': datetime.utcnow().isoformat()
+                            }
+                        )
+                        
+                        print(f"Started Step Functions execution for document {document_id}")
+                        processed_documents.append(document_id)
+                        
+                    except Exception as e:
+                        print(f"Error starting Step Functions: {str(e)}")
+                        # Update status to failed
+                        table.update_item(
+                            Key={'document_id': document_id},
+                            UpdateExpression="SET #status = :status, last_error = :error, updated_at = :timestamp",
+                            ExpressionAttributeNames={'#status': 'status'},
+                            ExpressionAttributeValues={
+                                ':status': 'FAILED',
+                                ':error': str(e),
+                                ':timestamp': datetime.utcnow().isoformat()
+                            }
+                        )
+                        raise
         
         return {
             'statusCode': 200,
