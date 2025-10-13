@@ -105,7 +105,7 @@ resource "aws_sqs_queue" "dlq" {
   }
 }
 
-# Main processing queue
+# Main processing queue (for regular files)
 resource "aws_sqs_queue" "incoming" {
   name = local.queue_name
   
@@ -126,6 +126,27 @@ resource "aws_sqs_queue" "incoming" {
   }
 }
 
+# ZIP processing queue
+resource "aws_sqs_queue" "zip_processing" {
+  name = "${local.queue_name}-zip"
+  
+  # Dead letter queue configuration
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.dlq.arn
+    maxReceiveCount     = 3
+  })
+  
+  # Visibility timeout for Lambda processing
+  visibility_timeout_seconds = 300  # 5 minutes for ZIP extraction
+  
+  # Message retention
+  message_retention_seconds = 345600 # 4 days
+  
+  tags = {
+    Name = "${var.project_name}-zip-queue"
+  }
+}
+
 data "aws_iam_policy_document" "sqs_policy" {
   statement {
     effect = "Allow"
@@ -134,7 +155,7 @@ data "aws_iam_policy_document" "sqs_policy" {
       identifiers = ["s3.amazonaws.com"]
     }
     actions   = ["SQS:SendMessage"]
-    resources = [aws_sqs_queue.incoming.arn]
+    resources = [aws_sqs_queue.incoming.arn, aws_sqs_queue.zip_processing.arn]
 
     condition {
       test     = "ArnEquals"
@@ -149,17 +170,53 @@ resource "aws_sqs_queue_policy" "policy" {
   policy    = data.aws_iam_policy_document.sqs_policy.json
 }
 
+resource "aws_sqs_queue_policy" "zip_policy" {
+  queue_url = aws_sqs_queue.zip_processing.id
+  policy    = data.aws_iam_policy_document.sqs_policy.json
+}
+
 # S3 → SQS notification
 resource "aws_s3_bucket_notification" "notify" {
   bucket = aws_s3_bucket.docproc.id
+
+  # Regular files (non-ZIP) go to main processing queue
+  queue {
+    queue_arn     = aws_sqs_queue.incoming.arn
+    events        = ["s3:ObjectCreated:*"]
+    filter_prefix = "incoming/"
+    filter_suffix = ".jpg"
+  }
 
   queue {
     queue_arn     = aws_sqs_queue.incoming.arn
     events        = ["s3:ObjectCreated:*"]
     filter_prefix = "incoming/"
+    filter_suffix = ".jpeg"
   }
 
-  depends_on = [aws_sqs_queue_policy.policy]
+  queue {
+    queue_arn     = aws_sqs_queue.incoming.arn
+    events        = ["s3:ObjectCreated:*"]
+    filter_prefix = "incoming/"
+    filter_suffix = ".png"
+  }
+
+  queue {
+    queue_arn     = aws_sqs_queue.incoming.arn
+    events        = ["s3:ObjectCreated:*"]
+    filter_prefix = "incoming/"
+    filter_suffix = ".pdf"
+  }
+
+  # ZIP files go to ZIP processing queue
+  queue {
+    queue_arn     = aws_sqs_queue.zip_processing.arn
+    events        = ["s3:ObjectCreated:*"]
+    filter_prefix = "incoming/"
+    filter_suffix = ".zip"
+  }
+
+  depends_on = [aws_sqs_queue_policy.policy, aws_sqs_queue_policy.zip_policy]
 }
 
 # -----------------------
@@ -283,6 +340,12 @@ data "archive_file" "aggregator_zip" {
   output_path = "${path.module}/lambda/aggregator_handler.zip"
 }
 
+data "archive_file" "zip_extractor_zip" {
+  type        = "zip"
+  source_file = "${path.module}/lambda/zip_extractor.py"
+  output_path = "${path.module}/lambda/zip_extractor.zip"
+}
+
 data "archive_file" "llm_zip" {
   type        = "zip"
   source_file = "${path.module}/lambda/llm_handler.py"
@@ -345,6 +408,23 @@ resource "aws_lambda_function" "aggregator" {
   }
 }
 
+resource "aws_lambda_function" "zip_extractor" {
+  function_name = "${var.project_name}-zip-extractor"
+  filename      = data.archive_file.zip_extractor_zip.output_path
+  handler       = "zip_extractor.lambda_handler"
+  runtime       = "python3.11"
+  role          = aws_iam_role.lambda_exec.arn
+  timeout       = 300
+  memory_size   = 512
+
+  environment {
+    variables = {
+      BUCKET_NAME = aws_s3_bucket.docproc.bucket
+      REGION      = var.region
+    }
+  }
+}
+
 resource "aws_lambda_function" "llm" {
   function_name = "${var.project_name}-llm"
   filename      = data.archive_file.llm_zip.output_path
@@ -369,6 +449,14 @@ resource "aws_lambda_event_source_mapping" "sqs_trigger" {
   event_source_arn = aws_sqs_queue.incoming.arn
   function_name    = aws_lambda_function.ingest.arn
   batch_size       = 10
+  enabled          = true
+}
+
+# Allow ZIP SQS to trigger ZIP extractor lambda
+resource "aws_lambda_event_source_mapping" "zip_sqs_trigger" {
+  event_source_arn = aws_sqs_queue.zip_processing.arn
+  function_name    = aws_lambda_function.zip_extractor.arn
+  batch_size       = 5  # Smaller batch for ZIP files
   enabled          = true
 }
 
