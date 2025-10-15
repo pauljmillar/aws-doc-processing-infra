@@ -198,6 +198,11 @@ def lambda_handler(event, context):
                 }
             )
             
+            # Check if PII processing should be enabled and send to queue
+            pii_enabled = check_pii_processing_config(bucket_name)
+            if pii_enabled:
+                send_to_pii_queue(document_id, pages, ocr_text_keys, bucket_name)
+            
             return {
                 'statusCode': 200,
                 'document_id': document_id,
@@ -248,3 +253,56 @@ def extract_text_from_textract_response(response):
             text_blocks.append(block['Text'])
     
     return '\n'.join(text_blocks)
+
+def check_pii_processing_config(bucket_name):
+    """Check if PII processing should be enabled for this bucket"""
+    try:
+        dynamodb = boto3.resource('dynamodb')
+        config_table = dynamodb.Table(os.environ.get('CONFIG_TABLE', 'docproc-config'))
+        
+        response = config_table.get_item(
+            Key={
+                'config_key': 'pii_processing',
+                'config_type': 'feature_flag'
+            }
+        )
+        
+        config = response.get('Item', {})
+        if not config.get('enabled', False):
+            return False
+            
+        conditions = config.get('conditions', {})
+        allowed_buckets = conditions.get('s3_buckets', [])
+        
+        if allowed_buckets and bucket_name not in allowed_buckets:
+            return False
+            
+        return True
+        
+    except Exception as e:
+        print(f"Error checking PII config: {e}")
+        return False  # Default to disabled on error
+
+def send_to_pii_queue(document_id, pages, ocr_text_keys, bucket_name):
+    """Send message to PII processing queue"""
+    try:
+        sqs = boto3.client('sqs')
+        queue_url = f"https://sqs.{os.environ.get('REGION', 'us-west-2')}.amazonaws.com/{boto3.client('sts').get_caller_identity()['Account']}/docproc-queue-pii"
+        
+        message = {
+            'document_id': document_id,
+            'pages': pages,
+            'ocr_text_keys': ocr_text_keys,
+            'bucket_name': bucket_name
+        }
+        
+        sqs.send_message(
+            QueueUrl=queue_url,
+            MessageBody=json.dumps(message)
+        )
+        
+        print(f"Sent document {document_id} to PII processing queue")
+        
+    except Exception as e:
+        print(f"Error sending to PII queue: {e}")
+        # Don't fail the main process if PII queue fails

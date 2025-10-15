@@ -57,10 +57,20 @@ def lambda_handler(event, context):
         openai_key = get_openai_key()
         
         # Process through LLM pipeline
+        print(f"Starting LLM processing for document {document_id}")
+        print(f"Document text length: {len(document_text)}")
+        print(f"Available schemas: {list(schemas.keys())}")
         results = process_document_with_llm(document_text, schemas, openai_key)
+        print(f"LLM processing completed. Results: {json.dumps(results, indent=2)}")
         
         # Extract document_type from classification results
-        document_type = results.get('document_analysis', {}).get('classification', {}).get('document_type', 'unknown')
+        classification_result = results.get('document_analysis', {}).get('classification', {})
+        if classification_result.get('success', False):
+            document_type = classification_result.get('data', {}).get('document_type', 'unknown')
+        else:
+            # API call failed, raise an error
+            error_msg = classification_result.get('error', 'Unknown error')
+            raise Exception(f"OpenAI API call failed: {error_msg}")
         
         # Save results to S3
         result_key = f"results/{document_id}_response.json"
@@ -74,16 +84,17 @@ def lambda_handler(event, context):
         # Move original files to complete folder
         moved_files = move_files_to_complete(s3, bucket_name, document_id, pages)
         
-        # Update DynamoDB with completion and document_type
+        # Update DynamoDB with completion, document_type, and full LLM results
         table.update_item(
             Key={'document_id': document_id},
-            UpdateExpression='SET #status = :status, result_key = :result, moved_files = :files, document_type = :doc_type, updated_at = :timestamp',
+            UpdateExpression='SET #status = :status, result_key = :result, moved_files = :files, document_type = :doc_type, llm_results = :llm_results, updated_at = :timestamp',
             ExpressionAttributeNames={'#status': 'status'},
             ExpressionAttributeValues={
                 ':status': 'COMPLETE',
                 ':result': result_key,
                 ':files': moved_files,
                 ':doc_type': document_type,
+                ':llm_results': json.dumps(results),  # Store full JSON results
                 ':timestamp': datetime.utcnow().isoformat()
             }
         )
@@ -157,6 +168,7 @@ def load_schemas_from_s3(s3_client, bucket_name):
 
 def process_document_with_llm(document_text, schemas, openai_key):
     """Process document through LLM with multiple schema passes."""
+    print(f"process_document_with_llm called with schemas: {list(schemas.keys())}")
     results = {
         'document_analysis': {},
         'processing_timestamp': datetime.utcnow().isoformat(),
@@ -165,12 +177,14 @@ def process_document_with_llm(document_text, schemas, openai_key):
     
     # First pass: Classification
     if 'classification' in schemas:
+        print("Starting classification pass...")
         classification_result = call_openai_api(
             document_text, 
             schemas['classification'], 
             openai_key,
             "classification"
         )
+        print(f"Classification result: {json.dumps(classification_result, indent=2)}")
         results['document_analysis']['classification'] = classification_result
         results['schema_passes'].append('classification')
     
@@ -203,6 +217,7 @@ def process_document_with_llm(document_text, schemas, openai_key):
 
 def call_openai_api(document_text, schema, openai_key, pass_name):
     """Call OpenAI API with the given schema."""
+    print(f"call_openai_api called for {pass_name} with key length: {len(openai_key)}")
     try:
         # Prepare the prompt based on schema
         if pass_name == "classification":

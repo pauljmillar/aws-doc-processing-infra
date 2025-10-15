@@ -152,15 +152,93 @@ depends_on = [aws_iam_role.lambda_exec]
 
 ## Common Issues and Solutions
 
-### S3 Notifications Not Working
+### S3 Notifications Not Working (CRITICAL - Recurring Issue)
 - **Symptom**: Files uploaded but no processing triggered
-- **Solution**: Recreate S3 notification configuration
-- **Command**: `aws s3api put-bucket-notification-configuration`
+- **Root Cause**: Terraform changes to S3 notifications often break the configuration
+- **Prevention**: ALWAYS use `s3:ObjectCreated:Put` instead of `s3:ObjectCreated:*` in Terraform
+- **Solution**: 
+  1. Check Terraform configuration uses `s3:ObjectCreated:Put`
+  2. Apply Terraform changes
+  3. Recreate S3 notification configuration manually if needed
+- **Commands**: 
+  ```bash
+  # Check current configuration
+  aws s3api get-bucket-notification-configuration --bucket bucket-name
+  
+  # Recreate if needed
+  aws s3api put-bucket-notification-configuration --bucket bucket-name --notification-configuration '...'
+  ```
+- **Terraform Fix**: Ensure all S3 notification events use `["s3:ObjectCreated:Put"]` not `["s3:ObjectCreated:*"]`
 
-### Lambda Timeouts
+### Lambda Timeouts (CRITICAL - Recurring Issue)
 - **Symptom**: OCR processing fails with timeout
-- **Solution**: Increase timeout to 300+ seconds
-- **Command**: `aws lambda update-function-configuration --timeout 300`
+- **Root Cause**: Terraform apply resets Lambda timeouts to default (3 seconds)
+- **Prevention**: ALWAYS check and fix Lambda timeouts after Terraform apply
+- **Solution**: 
+  1. After every `terraform apply`, check Lambda timeouts
+  2. Fix timeouts: Ingest (60s), OCR (300s), LLM (300s)
+- **Commands**: 
+  ```bash
+  # Fix Lambda timeouts after Terraform apply
+  aws lambda update-function-configuration --function-name docproc-ingest --timeout 60
+  aws lambda update-function-configuration --function-name docproc-ocr --timeout 300
+  aws lambda update-function-configuration --function-name docproc-llm --timeout 300
+  ```
+
+### OpenAI API Key Error (CRITICAL - Recurring Issue)
+- **Symptom**: LLM processing fails with "Incorrect API key provided: dummy"
+- **Root Cause**: Terraform apply overwrites the OpenAI secret with dummy value
+- **Prevention**: ALWAYS update OpenAI secret after Terraform apply
+- **Solution**: 
+  1. After every `terraform apply`, update the OpenAI secret
+  2. Use the actual API key, not the dummy value
+- **Commands**: 
+  ```bash
+  # Update OpenAI secret after Terraform apply
+  aws secretsmanager update-secret \
+    --secret-id docproc-openai-key \
+    --secret-string '{"OPENAI_API_KEY":"sk-proj-YOUR-ACTUAL-API-KEY-HERE"}'
+  ```
+- **Note**: The dummy value is used during Terraform apply to avoid exposing the real key in logs
+
+### Lambda Event Source Mapping Disabled (CRITICAL - Recurring Issue)
+- **Symptom**: Files uploaded but no processing triggered, SQS queue empty
+- **Root Cause**: Lambda event source mapping between SQS and docproc-ingest Lambda gets disabled
+- **Prevention**: ALWAYS check Lambda event source mapping status after Terraform apply
+- **Solution**: 
+  1. Check if event source mapping is enabled
+  2. Enable if disabled
+  3. Remove any incorrect event source mappings
+- **Commands**: 
+  ```bash
+  # Check event source mapping status
+  aws lambda list-event-source-mappings --function-name docproc-ingest --query 'EventSourceMappings[0].{UUID:UUID,State:State,EventSourceArn:EventSourceArn}'
+  
+  # Enable if disabled
+  aws lambda update-event-source-mapping --uuid YOUR_UUID --enabled
+  
+  # Delete incorrect mappings (pointing to wrong queue)
+  aws lambda delete-event-source-mapping --uuid INCORRECT_UUID
+  ```
+
+### Extra Event Source Mappings (CRITICAL - Recurring Issue)
+- **Symptom**: Multiple event source mappings pointing to different SQS queues
+- **Root Cause**: Test or incorrect event source mappings created during debugging
+- **Prevention**: Clean up test resources after debugging
+- **Solution**: 
+  1. List all event source mappings for the function
+  2. Identify correct mapping (should point to docproc-queue)
+  3. Delete incorrect mappings (e.g., test-s3-notifications)
+- **Commands**: 
+  ```bash
+  # List all event source mappings
+  aws lambda list-event-source-mappings --function-name docproc-ingest --query 'EventSourceMappings[].{UUID:UUID,EventSourceArn:EventSourceArn,State:State}'
+  
+  # Delete incorrect mapping
+  aws lambda update-event-source-mapping --uuid INCORRECT_UUID --no-enabled
+  aws lambda delete-event-source-mapping --uuid INCORRECT_UUID
+  ```
+- **Note**: Correct EventSourceArn should be `arn:aws:sqs:us-west-2:ACCOUNT:docproc-queue`
 
 ### Missing Dependencies
 - **Symptom**: Import errors in Lambda
@@ -171,6 +249,63 @@ depends_on = [aws_iam_role.lambda_exec]
 - **Symptom**: Execution stuck in WaitForOCR state
 - **Solution**: Ensure Lambda returns proper status and preserves context
 - **Fix**: Include `pages` and `bucket_name` in Lambda responses
+
+## Post-Terraform Apply Checklist (CRITICAL)
+
+**ALWAYS perform these checks after every `terraform apply`:**
+
+1. **Check Lambda Timeouts**
+   ```bash
+   aws lambda get-function-configuration --function-name docproc-ingest --query 'Timeout'
+   aws lambda get-function-configuration --function-name docproc-ocr --query 'Timeout'
+   aws lambda get-function-configuration --function-name docproc-llm --query 'Timeout'
+   ```
+   - Ingest should be 60 seconds
+   - OCR should be 300 seconds  
+   - LLM should be 300 seconds
+
+2. **Fix Lambda Timeouts if Needed**
+   ```bash
+   aws lambda update-function-configuration --function-name docproc-ingest --timeout 60
+   aws lambda update-function-configuration --function-name docproc-ocr --timeout 300
+   aws lambda update-function-configuration --function-name docproc-llm --timeout 300
+   ```
+
+3. **Update OpenAI Secret (CRITICAL)**
+   ```bash
+   # Terraform apply overwrites the secret with dummy value
+   aws secretsmanager update-secret \
+     --secret-id docproc-openai-key \
+     --secret-string '{"OPENAI_API_KEY":"sk-proj-YOUR-ACTUAL-API-KEY-HERE"}'
+   ```
+
+4. **Check Lambda Event Source Mappings (CRITICAL)**
+   ```bash
+   # Check if event source mapping is enabled
+   aws lambda list-event-source-mappings --function-name docproc-ingest --query 'EventSourceMappings[0].{UUID:UUID,State:State,EventSourceArn:EventSourceArn}'
+   
+   # Enable if disabled
+   aws lambda update-event-source-mapping --uuid YOUR_UUID --enabled
+   
+   # Check for multiple mappings and remove incorrect ones
+   aws lambda list-event-source-mappings --function-name docproc-ingest --query 'EventSourceMappings[].{UUID:UUID,EventSourceArn:EventSourceArn,State:State}'
+   ```
+
+5. **Test S3 Notifications**
+   ```bash
+   # Upload a test file
+   echo "test" > test-notification.txt && aws s3 cp test-notification.txt s3://docproc-bucket/incoming/test-$(date +%s).pdf && rm test-notification.txt
+   
+   # Wait 15 seconds, then check if document appears in DynamoDB
+   aws dynamodb scan --table-name docproc-documents --limit 1 --query 'Items[0].{document_id:document_id.S,status:status.S,original_filename:original_filename.S}'
+   ```
+
+6. **Clean Up Test Files**
+   ```bash
+   aws s3 rm s3://docproc-bucket/incoming/test-*.pdf
+   ```
+
+**This checklist prevents the five most common recurring issues: Lambda timeouts, S3 notification failures, OpenAI API key errors, disabled event source mappings, and extra event source mappings.**
 
 ## Testing and Debugging
 

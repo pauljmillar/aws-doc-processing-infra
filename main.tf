@@ -86,6 +86,29 @@ resource "aws_dynamodb_table" "documents" {
   }
 }
 
+# DynamoDB table for configuration
+resource "aws_dynamodb_table" "config" {
+  name         = "${var.project_name}-config"
+  billing_mode = "PAY_PER_REQUEST"
+
+  hash_key  = "config_key"
+  range_key = "config_type"
+
+  attribute {
+    name = "config_key"
+    type = "S"
+  }
+
+  attribute {
+    name = "config_type"
+    type = "S"
+  }
+
+  tags = {
+    Name = "${var.project_name}-config"
+  }
+}
+
 # -----------------------
 # SQS queues
 # -----------------------
@@ -142,6 +165,27 @@ resource "aws_sqs_queue" "zip_processing" {
   }
 }
 
+# PII processing queue
+resource "aws_sqs_queue" "pii_processing" {
+  name = "${local.queue_name}-pii"
+  
+  # Dead letter queue configuration
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.dlq.arn
+    maxReceiveCount     = 3
+  })
+  
+  # Visibility timeout for Lambda processing
+  visibility_timeout_seconds = 300  # 5 minutes for PII processing
+  
+  # Message retention
+  message_retention_seconds = 345600 # 4 days
+  
+  tags = {
+    Name = "${var.project_name}-pii-queue"
+  }
+}
+
 data "aws_iam_policy_document" "sqs_policy" {
   statement {
     effect = "Allow"
@@ -150,7 +194,7 @@ data "aws_iam_policy_document" "sqs_policy" {
       identifiers = ["s3.amazonaws.com"]
     }
     actions   = ["SQS:SendMessage"]
-    resources = [aws_sqs_queue.incoming.arn, aws_sqs_queue.zip_processing.arn]
+    resources = [aws_sqs_queue.incoming.arn, aws_sqs_queue.zip_processing.arn, aws_sqs_queue.pii_processing.arn]
 
     condition {
       test     = "ArnEquals"
@@ -170,6 +214,11 @@ resource "aws_sqs_queue_policy" "zip_policy" {
   policy    = data.aws_iam_policy_document.sqs_policy.json
 }
 
+resource "aws_sqs_queue_policy" "pii_policy" {
+  queue_url = aws_sqs_queue.pii_processing.id
+  policy    = data.aws_iam_policy_document.sqs_policy.json
+}
+
 # S3 → SQS notification
 resource "aws_s3_bucket_notification" "notify" {
   bucket = aws_s3_bucket.docproc.id
@@ -177,28 +226,28 @@ resource "aws_s3_bucket_notification" "notify" {
   # Regular files (non-ZIP) go to main processing queue
   queue {
     queue_arn     = aws_sqs_queue.incoming.arn
-    events        = ["s3:ObjectCreated:*"]
+    events        = ["s3:ObjectCreated:Put"]
     filter_prefix = "incoming/"
     filter_suffix = ".jpg"
   }
 
   queue {
     queue_arn     = aws_sqs_queue.incoming.arn
-    events        = ["s3:ObjectCreated:*"]
+    events        = ["s3:ObjectCreated:Put"]
     filter_prefix = "incoming/"
     filter_suffix = ".jpeg"
   }
 
   queue {
     queue_arn     = aws_sqs_queue.incoming.arn
-    events        = ["s3:ObjectCreated:*"]
+    events        = ["s3:ObjectCreated:Put"]
     filter_prefix = "incoming/"
     filter_suffix = ".png"
   }
 
   queue {
     queue_arn     = aws_sqs_queue.incoming.arn
-    events        = ["s3:ObjectCreated:*"]
+    events        = ["s3:ObjectCreated:Put"]
     filter_prefix = "incoming/"
     filter_suffix = ".pdf"
   }
@@ -206,7 +255,7 @@ resource "aws_s3_bucket_notification" "notify" {
   # ZIP files go to ZIP processing queue
   queue {
     queue_arn     = aws_sqs_queue.zip_processing.arn
-    events        = ["s3:ObjectCreated:*"]
+    events        = ["s3:ObjectCreated:Put"]
     filter_prefix = "incoming/"
     filter_suffix = ".zip"
   }
@@ -341,6 +390,18 @@ data "archive_file" "zip_extractor_zip" {
   output_path = "${path.module}/lambda/zip_extractor.zip"
 }
 
+# Use our existing PIL layer
+data "aws_lambda_layer_version" "pillow_layer" {
+  layer_name = "docproc-pii-layer"
+  version    = 1
+}
+
+data "archive_file" "pii_handler_zip" {
+  type        = "zip"
+  source_file = "${path.module}/lambda/pii_handler.py"
+  output_path = "${path.module}/lambda/pii_handler.zip"
+}
+
 data "archive_file" "llm_zip" {
   type        = "zip"
   source_file = "${path.module}/lambda/llm_handler.py"
@@ -379,6 +440,7 @@ resource "aws_lambda_function" "ocr" {
     variables = {
       BUCKET_NAME        = aws_s3_bucket.docproc.bucket
       DOCUMENTS_TABLE    = aws_dynamodb_table.documents.name
+      CONFIG_TABLE       = aws_dynamodb_table.config.name
       OPENAI_SECRET_NAME = aws_secretsmanager_secret.openai.name
       REGION             = var.region
     }
@@ -420,6 +482,27 @@ resource "aws_lambda_function" "zip_extractor" {
   }
 }
 
+resource "aws_lambda_function" "pii_handler" {
+  function_name = "${var.project_name}-pii-handler"
+  filename      = data.archive_file.pii_handler_zip.output_path
+  handler       = "pii_handler.lambda_handler"
+  runtime       = "python3.11"
+  role          = aws_iam_role.lambda_exec.arn
+  timeout       = 600  # 10 minutes for image processing
+  memory_size   = 1024  # Increased for image processing
+
+  layers = [data.aws_lambda_layer_version.pillow_layer.arn]
+
+  environment {
+    variables = {
+      BUCKET_NAME = aws_s3_bucket.docproc.bucket
+      DOCUMENTS_TABLE = aws_dynamodb_table.documents.name
+      CONFIG_TABLE = aws_dynamodb_table.config.name
+      REGION      = var.region
+    }
+  }
+}
+
 resource "aws_lambda_function" "llm" {
   function_name = "${var.project_name}-llm"
   filename      = data.archive_file.llm_zip.output_path
@@ -452,6 +535,14 @@ resource "aws_lambda_event_source_mapping" "zip_sqs_trigger" {
   event_source_arn = aws_sqs_queue.zip_processing.arn
   function_name    = aws_lambda_function.zip_extractor.arn
   batch_size       = 5  # Smaller batch for ZIP files
+  enabled          = true
+}
+
+# Allow PII SQS to trigger PII handler lambda
+resource "aws_lambda_event_source_mapping" "pii_sqs_trigger" {
+  event_source_arn = aws_sqs_queue.pii_processing.arn
+  function_name    = aws_lambda_function.pii_handler.arn
+  batch_size       = 5  # Smaller batch for PII processing
   enabled          = true
 }
 
