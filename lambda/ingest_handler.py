@@ -7,6 +7,44 @@ import uuid
 from datetime import datetime, timedelta
 from urllib.parse import unquote_plus
 
+def find_existing_document_id(table, base_filename):
+    """
+    Find existing document ID for a given base filename.
+    Searches for documents where the original_filename has the same base name.
+    """
+    try:
+        # Scan the table for documents with matching base filename
+        # We'll look for documents where original_filename starts with base_filename
+        response = table.scan(
+            FilterExpression='begins_with(original_filename, :base_name)',
+            ExpressionAttributeValues={':base_name': base_filename}
+        )
+        
+        print(f"Scanning for documents with base filename: {base_filename}")
+        print(f"Found {len(response.get('Items', []))} potential matches")
+        
+        # Look for exact matches (base_filename + page number pattern)
+        for item in response.get('Items', []):
+            original_filename = item.get('original_filename', '')
+            print(f"Checking stored filename: {original_filename}")
+            
+            # Extract the base part of the stored filename
+            # Pattern: base_filename + optional separator + optional digits + extension
+            stored_match = re.match(r'^(.+?)[_-]?\d*\.(.+)$', original_filename)
+            if stored_match:
+                stored_base = stored_match.group(1)
+                print(f"Extracted base from stored filename: {stored_base}")
+                if stored_base == base_filename:
+                    print(f"Found matching document: {item['document_id']}")
+                    return item['document_id']
+        
+        print(f"No existing document found for base filename: {base_filename}")
+        return None
+        
+    except Exception as e:
+        print(f"Error finding existing document ID: {str(e)}")
+        return None
+
 def lambda_handler(event, context):
     """
     Processes S3 events and manages document state in DynamoDB.
@@ -85,9 +123,15 @@ def lambda_handler(event, context):
                         print(f"Skipping file with unexpected format: {filename}")
                         continue
                 
-                # Generate unique document ID using pure GUID
-                document_id = str(uuid.uuid4())
-                print(f"Generated document ID: {document_id} for base filename: {base_filename}")
+                # Check if we already have a document with this base filename
+                document_id = find_existing_document_id(table, base_filename)
+                
+                if document_id is None:
+                    # Generate unique document ID using pure GUID for new document
+                    document_id = str(uuid.uuid4())
+                    print(f"Generated new document ID: {document_id} for base filename: {base_filename}")
+                else:
+                    print(f"Found existing document ID: {document_id} for base filename: {base_filename}")
                 
                 # Validate file type (extension)
                 if file_extension.lower() not in ['jpg', 'jpeg', 'png', 'pdf']:
@@ -119,6 +163,7 @@ def lambda_handler(event, context):
                     if 'Item' in response:
                         doc_item = response['Item']
                         status = doc_item.get('status', 'AWAITING_PAGES')
+                        print(f"Found existing document with status: {status}")
                     else:
                         # Create new document record
                         doc_item = {
@@ -135,6 +180,7 @@ def lambda_handler(event, context):
                             'ttl': int((datetime.utcnow() + timedelta(days=30)).timestamp())
                         }
                         status = 'AWAITING_PAGES'
+                        print(f"Created new document record")
                 except Exception as e:
                     print(f"Error accessing DynamoDB: {str(e)}")
                     raise
@@ -143,6 +189,9 @@ def lambda_handler(event, context):
                 pages = doc_item.get('pages', [])
                 if key not in pages:
                     pages.append(key)
+                    print(f"Added page {key} to document {document_id}. Total pages: {len(pages)}")
+                else:
+                    print(f"Page {key} already exists in document {document_id}")
                 
                 # Update DynamoDB record
                 update_expression = "SET pages = :pages, pages_received = :count, updated_at = :timestamp"
@@ -151,23 +200,43 @@ def lambda_handler(event, context):
                     ':count': len(pages),
                     ':timestamp': datetime.utcnow().isoformat()
                 }
+                expression_names = {}
                 
                 # If this is the first page, set initial status and original_filename
                 if len(pages) == 1:
                     update_expression += ", #status = :status, original_filename = :filename"
                     expression_values[':status'] = 'AWAITING_PAGES'
                     expression_values[':filename'] = filename
+                    expression_names['#status'] = 'status'
+                elif status == 'COMPLETE' and len(pages) > 1:
+                    # If document was already complete but we're adding more pages, reset status
+                    update_expression += ", #status = :status"
+                    expression_values[':status'] = 'AWAITING_PAGES'
+                    expression_names['#status'] = 'status'
+                    print(f"Document {document_id} was COMPLETE but new pages added, resetting to AWAITING_PAGES")
                 
-                table.update_item(
-                    Key={'document_id': document_id},
-                    UpdateExpression=update_expression,
-                    ExpressionAttributeNames={'#status': 'status'},
-                    ExpressionAttributeValues=expression_values
-                )
+                # Only include ExpressionAttributeNames if it's not empty
+                update_params = {
+                    'Key': {'document_id': document_id},
+                    'UpdateExpression': update_expression,
+                    'ExpressionAttributeValues': expression_values
+                }
+                
+                if expression_names:
+                    update_params['ExpressionAttributeNames'] = expression_names
+                
+                table.update_item(**update_params)
                 
                 # Check if we should start processing
-                # For now, start processing after first page (can be enhanced with expected_pages)
-                if len(pages) == 1 and status == 'AWAITING_PAGES':
+                # Start processing after first page (can be enhanced with expected_pages)
+                # Also restart processing if we added pages to a completed document
+                should_start_processing = (
+                    (len(pages) == 1 and status == 'AWAITING_PAGES') or  # New document with first page
+                    (status == 'COMPLETE' and len(pages) > 1) or  # Adding pages to completed document
+                    (status == 'AWAITING_PAGES' and len(pages) > 1)  # Adding pages to document awaiting processing
+                )
+                
+                if should_start_processing:
                     # Start Step Functions execution
                     execution_input = {
                         'document_id': document_id,
