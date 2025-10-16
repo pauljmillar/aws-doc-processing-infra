@@ -67,6 +67,7 @@ def lambda_handler(event, context):
         classification_result = results.get('document_analysis', {}).get('classification', {})
         if classification_result.get('success', False):
             document_type = classification_result.get('data', {}).get('document_type', 'unknown')
+            print(f"Document type determined: {document_type}")
         else:
             # API call failed, raise an error
             error_msg = classification_result.get('error', 'Unknown error')
@@ -187,31 +188,43 @@ def process_document_with_llm(document_text, schemas, openai_key):
         print(f"Classification result: {json.dumps(classification_result, indent=2)}")
         results['document_analysis']['classification'] = classification_result
         results['schema_passes'].append('classification')
-    
-    # Additional passes based on classification results
-    doc_type = results['document_analysis'].get('classification', {}).get('document_type', 'unknown')
-    
-    # Look for specific schema for this document type
-    if doc_type in schemas:
-        specific_result = call_openai_api(
-            document_text,
-            schemas[doc_type],
-            openai_key,
-            f"specific_extraction_{doc_type}"
-        )
-        results['document_analysis']['specific_extraction'] = specific_result
-        results['schema_passes'].append(f'specific_extraction_{doc_type}')
-    
-    # Default extraction if no specific schema
-    if 'extraction' in schemas and doc_type not in schemas:
-        extraction_result = call_openai_api(
-            document_text,
-            schemas['extraction'],
-            openai_key,
-            "general_extraction"
-        )
-        results['document_analysis']['general_extraction'] = extraction_result
-        results['schema_passes'].append('general_extraction')
+        
+        # Extract document type from classification result
+        if classification_result.get('success', False):
+            doc_type = classification_result.get('data', {}).get('document_type', 'unknown')
+            print(f"Document classified as: {doc_type}")
+            
+            # Second pass: Specific schema extraction based on classification
+            schema_mapping = {
+                'promotion': 'banking',  # Promotions use banking schema
+                'invoice': 'invoice',
+                'banking': 'banking',
+                'credit_card': 'credit_cards',
+                'insurance': 'insurance',
+                'receipt': 'invoice',  # Receipts can use invoice schema
+                'contract': 'invoice',  # Contracts can use invoice schema
+                'letter': 'invoice'     # Letters can use invoice schema
+            }
+            
+            # Map document type to schema name
+            schema_name = schema_mapping.get(doc_type, doc_type)
+            
+            # Look for specific schema for this document type
+            if schema_name in schemas:
+                print(f"Starting specific extraction pass for {schema_name}...")
+                specific_result = call_openai_api(
+                    document_text,
+                    schemas[schema_name],
+                    openai_key,
+                    f"specific_extraction_{schema_name}"
+                )
+                print(f"Specific extraction result: {json.dumps(specific_result, indent=2)}")
+                results['document_analysis']['specific_extraction'] = specific_result
+                results['schema_passes'].append(f'specific_extraction_{schema_name}')
+            else:
+                print(f"No specific schema found for {schema_name}, available schemas: {list(schemas.keys())}")
+        else:
+            print("Classification failed, skipping specific extraction")
     
     return results
 

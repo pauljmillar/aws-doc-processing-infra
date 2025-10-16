@@ -1,0 +1,219 @@
+{
+  "description": "Extract detailed information from insurance advertisements, promotions, and marketing materials",
+  "fields": {
+    "insurance_type": {
+      "type": "string",
+      "description": "Type of insurance (auto, home, life, health, disability, umbrella, pet, travel, etc.)",
+      "required": true
+    },
+    "insurance_company": {
+      "type": "string",
+      "description": "Name of the insurance company or carrier",
+      "required": true
+    },
+    "product_name": {
+      "type": "string",
+      "description": "Specific insurance product or policy name"
+    },
+    "marketing_message": {
+      "type": "string",
+      "description": "Main marketing headline or value proposition"
+    },
+    "coverage_details": {
+      "type": "object",
+      "description": "Coverage information and limits",
+      "properties": {
+        "coverage_types": "array",
+        "coverage_limits": "string",
+        "deductible_options": "array",
+        "additional_coverage": "array",
+        "exclusions": "array"
+      }
+    },
+    "pricing_information": {
+      "type": "object",
+      "description": "Cost and pricing details",
+      "properties": {
+        "premium_range": "string",
+        "discount_opportunities": "array",
+        "payment_options": "array",
+        "bundle_discounts": "string",
+        "multi_policy_discount": "string"
+      }
+    },
+    "discounts_and_savings": {
+      "type": "object",
+      "description": "Available discounts and savings opportunities",
+      "properties": {
+        "safe_driver_discount": "string",
+        "multi_car_discount": "string",
+        "home_auto_bundle": "string",
+        "good_student_discount": "string",
+        "senior_discount": "string",
+        "military_discount": "string",
+        "loyalty_discount": "string",
+        "paperless_discount": "string",
+        "pay_in_full_discount": "string"
+      }
+    },
+    "special_offers": {
+      "type": "object",
+      "description": "Promotional offers and incentives",
+      "properties": {
+        "new_customer_bonus": "string",
+        "referral_bonus": "string",
+        "sign_up_incentive": "string",
+        "limited_time_offer": "string",
+        "free_quote_bonus": "string"
+      }
+    },
+    "claims_process": {
+      "type": "object",
+      "description": "Claims handling and customer service",
+      "properties": {
+        "claims_process": "string",
+        "customer_service_rating": "string",
+        "mobile_app_available": "string",
+        "online_claims": "string",
+        "24_7_claims": "string",
+        "claims_satisfaction": "string"
+      }
+    },
+    "financial_strength": {
+      "type": "object",
+      "description": "Company financial ratings and stability",
+      "properties": {
+        "am_best_rating": "string",
+        "moodys_rating": "string",
+        "standard_poors_rating": "string",
+        "years_in_business": "string",
+        "financial_stability": "string"
+      }
+    },
+    "unique_features": {
+      "type": "array",
+      "description": "Unique features and benefits",
+      "items": {
+        "type": "string"
+      }
+    },
+    "technology_features": {
+      "type": "object",
+      "description": "Digital tools and technology offerings",
+      "properties": {
+        "mobile_app": "string",
+        "online_portal": "string",
+        "telematics_program": "string",
+        "smart_home_discounts": "string",
+        "ai_claims_processing": "string",
+        "digital_id_cards": "string"
+      }
+    },
+    "coverage_areas": {
+      "type": "object",
+      "description": "Geographic coverage and availability",
+      "properties": {
+        "states_covered": "array",
+        "coverage_area": "string",
+        "local_agents": "string",
+        "online_only": "string"
+      }
+    },
+    "eligibility_requirements": {
+      "type": "object",
+      "description": "Qualification and eligibility criteria",
+      "properties": {
+        "age_requirements": "string",
+        "driving_record": "string",
+        "credit_score": "string",
+        "property_requirements": "string",
+        "health_requirements": "string",
+        "occupation_restrictions": "string"
+      }
+    },
+    "contact_information": {
+      "type": "object",
+      "description": "How to get quotes and contact details",
+      "properties": {
+        "phone_number": "string",
+        "website": "string",
+        "local_agent_locator": "string",
+        "online_quote": "string",
+        "chat_support": "string"
+      }
+    },
+    "comparison_claims": {
+      "type": "object",
+      "description": "Competitive advantages and comparisons",
+      "properties": {
+        "savings_claim": "string",
+        "coverage_advantage": "string",
+        "service_advantage": "string",
+        "speed_advantage": "string",
+        "customer_satisfaction": "string"
+      }
+    },
+    "life_insurance_specific": {
+      "type": "object",
+      "description": "Life insurance specific fields",
+      "properties": {
+        "policy_types": "array",
+        "death_benefit_range": "string",
+        "cash_value": "string",
+        "premium_guarantee": "string",
+        "riders_available": "array",
+        "underwriting_process": "string"
+      }
+    },
+    "health_insurance_specific": {
+      "type": "object",
+      "description": "Health insurance specific fields",
+      "properties": {
+        "plan_types": "array",
+        "network_size": "string",
+        "premium_range": "string",
+        "deductible_range": "string",
+        "copay_information": "string",
+        "prescription_coverage": "string"
+      }
+    },
+    "auto_insurance_specific": {
+      "type": "object",
+      "description": "Auto insurance specific fields",
+      "properties": {
+        "liability_limits": "string",
+        "comprehensive_coverage": "string",
+        "collision_coverage": "string",
+        "uninsured_motorist": "string",
+        "roadside_assistance": "string",
+        "rental_reimbursement": "string"
+      }
+    },
+    "home_insurance_specific": {
+      "type": "object",
+      "description": "Home insurance specific fields",
+      "properties": {
+        "dwelling_coverage": "string",
+        "personal_property": "string",
+        "liability_coverage": "string",
+        "additional_living_expenses": "string",
+        "flood_coverage": "string",
+        "earthquake_coverage": "string"
+      }
+    },
+    "terms_and_conditions": {
+      "type": "string",
+      "description": "Key terms, conditions, and disclaimers"
+    },
+    "promotional_deadlines": {
+      "type": "object",
+      "description": "Time-sensitive offers and deadlines",
+      "properties": {
+        "offer_expires": "string",
+        "quote_deadline": "string",
+        "enrollment_period": "string",
+        "early_bird_discount": "string"
+      }
+    }
+  }
+}

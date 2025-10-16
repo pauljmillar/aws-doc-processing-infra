@@ -1,0 +1,129 @@
+{
+  "description": "Extract detailed information from banking promotions, credit card offers, and financial incentives",
+  "fields": {
+    "offer_type": {
+      "type": "string",
+      "description": "Type of banking offer (credit_card, checking_account, savings_account, loan, mortgage, etc.)",
+      "required": true
+    },
+    "bank_name": {
+      "type": "string",
+      "description": "Name of the bank or financial institution",
+      "required": true
+    },
+    "card_name": {
+      "type": "string",
+      "description": "Name of the credit card or product (if applicable)"
+    },
+    "promotion_title": {
+      "type": "string",
+      "description": "Main headline or title of the promotion"
+    },
+    "signup_bonus": {
+      "type": "object",
+      "description": "Sign-up bonus or welcome offer details",
+      "properties": {
+        "amount": "string",
+        "currency": "string",
+        "requirements": "string",
+        "timeframe": "string"
+      }
+    },
+    "apr_rates": {
+      "type": "object",
+      "description": "Annual Percentage Rate information",
+      "properties": {
+        "purchase_apr": "string",
+        "balance_transfer_apr": "string",
+        "cash_advance_apr": "string",
+        "intro_apr": "string",
+        "intro_period": "string"
+      }
+    },
+    "introductory_offers": {
+      "type": "array",
+      "description": "List of introductory offers and promotional rates",
+      "items": {
+        "type": "object",
+        "properties": {
+          "offer_type": "string",
+          "rate": "string",
+          "duration": "string",
+          "conditions": "string"
+        }
+      }
+    },
+    "rewards_program": {
+      "type": "object",
+      "description": "Rewards program details",
+      "properties": {
+        "program_name": "string",
+        "earning_rate": "string",
+        "categories": "array",
+        "redemption_options": "array"
+      }
+    },
+    "fees": {
+      "type": "object",
+      "description": "Fee structure information",
+      "properties": {
+        "annual_fee": "string",
+        "foreign_transaction_fee": "string",
+        "late_payment_fee": "string",
+        "overlimit_fee": "string",
+        "balance_transfer_fee": "string"
+      }
+    },
+    "credit_requirements": {
+      "type": "object",
+      "description": "Credit score and qualification requirements",
+      "properties": {
+        "minimum_credit_score": "string",
+        "income_requirements": "string",
+        "other_qualifications": "string"
+      }
+    },
+    "promotional_period": {
+      "type": "object",
+      "description": "Time limits and expiration dates for offers",
+      "properties": {
+        "offer_expires": "string",
+        "application_deadline": "string",
+        "intro_period_end": "string"
+      }
+    },
+    "special_features": {
+      "type": "array",
+      "description": "Special features, benefits, or perks",
+      "items": {
+        "type": "string"
+      }
+    },
+    "contact_information": {
+      "type": "object",
+      "description": "How to apply or get more information",
+      "properties": {
+        "website": "string",
+        "phone_number": "string",
+        "application_url": "string"
+      }
+    },
+    "terms_and_conditions": {
+      "type": "string",
+      "description": "Key terms, conditions, or disclaimers mentioned"
+    },
+    "co_brand_partner": {
+      "type": "string",
+      "description": "Co-branded partner (airlines, hotels, retailers, etc.)"
+    },
+    "minimum_spend_requirements": {
+      "type": "object",
+      "description": "Spending requirements for bonuses or benefits",
+      "properties": {
+        "amount": "string",
+        "timeframe": "string",
+        "description": "string"
+      }
+    }
+  }
+}

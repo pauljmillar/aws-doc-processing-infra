@@ -1,0 +1,206 @@
+{
+  "description": "Extract detailed information from credit card offers, promotions, and applications",
+  "fields": {
+    "card_name": {
+      "type": "string",
+      "description": "Name of the credit card product",
+      "required": true
+    },
+    "issuer": {
+      "type": "string",
+      "description": "Bank or financial institution issuing the card",
+      "required": true
+    },
+    "card_type": {
+      "type": "string",
+      "description": "Type of card (Visa, Mastercard, American Express, Discover)",
+      "required": true
+    },
+    "co_brand_partner": {
+      "type": "object",
+      "description": "Co-branded partner information",
+      "properties": {
+        "partner_name": "string",
+        "partner_type": "string",
+        "partnership_details": "string"
+      }
+    },
+    "welcome_offer": {
+      "type": "object",
+      "description": "Sign-up bonus or welcome offer",
+      "properties": {
+        "bonus_type": "string",
+        "bonus_amount": "string",
+        "bonus_currency": "string",
+        "spending_requirement": "string",
+        "timeframe": "string",
+        "additional_terms": "string"
+      }
+    },
+    "introductory_rates": {
+      "type": "object",
+      "description": "Introductory APR offers",
+      "properties": {
+        "purchase_apr": "string",
+        "balance_transfer_apr": "string",
+        "cash_advance_apr": "string",
+        "intro_period": "string",
+        "intro_period_end": "string",
+        "balance_transfer_fee": "string"
+      }
+    },
+    "ongoing_rates": {
+      "type": "object",
+      "description": "Standard ongoing rates after intro period",
+      "properties": {
+        "purchase_apr": "string",
+        "balance_transfer_apr": "string",
+        "cash_advance_apr": "string",
+        "penalty_apr": "string"
+      }
+    },
+    "rewards_program": {
+      "type": "object",
+      "description": "Rewards earning structure",
+      "properties": {
+        "program_name": "string",
+        "base_earning_rate": "string",
+        "bonus_categories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "category": "string",
+              "earning_rate": "string",
+              "spending_limit": "string",
+              "timeframe": "string"
+            }
+          }
+        },
+        "annual_spending_cap": "string",
+        "points_value": "string"
+      }
+    },
+    "travel_benefits": {
+      "type": "object",
+      "description": "Travel-related perks and benefits",
+      "properties": {
+        "airline_credits": "string",
+        "hotel_credits": "string",
+        "travel_insurance": "array",
+        "airport_lounge_access": "string",
+        "tsa_precheck_credit": "string",
+        "global_entry_credit": "string",
+        "free_checked_bags": "string",
+        "priority_boarding": "string",
+        "concierge_service": "string"
+      }
+    },
+    "lifestyle_benefits": {
+      "type": "object",
+      "description": "Lifestyle and everyday benefits",
+      "properties": {
+        "uber_credits": "string",
+        "dining_credits": "string",
+        "streaming_credits": "string",
+        "gym_credits": "string",
+        "phone_insurance": "string",
+        "purchase_protection": "string",
+        "extended_warranty": "string",
+        "return_protection": "string"
+      }
+    },
+    "fees": {
+      "type": "object",
+      "description": "Fee structure",
+      "properties": {
+        "annual_fee": "string",
+        "foreign_transaction_fee": "string",
+        "late_payment_fee": "string",
+        "overlimit_fee": "string",
+        "balance_transfer_fee": "string",
+        "cash_advance_fee": "string",
+        "returned_payment_fee": "string"
+      }
+    },
+    "credit_requirements": {
+      "type": "object",
+      "description": "Qualification requirements",
+      "properties": {
+        "minimum_credit_score": "string",
+        "credit_score_range": "string",
+        "income_requirements": "string",
+        "employment_requirements": "string",
+        "other_qualifications": "string"
+      }
+    },
+    "redemption_options": {
+      "type": "array",
+      "description": "How rewards can be redeemed",
+      "items": {
+        "type": "object",
+        "properties": {
+          "redemption_type": "string",
+          "value": "string",
+          "minimum_redemption": "string",
+          "transfer_partners": "array"
+        }
+      }
+    },
+    "promotional_periods": {
+      "type": "object",
+      "description": "Time-sensitive offers and deadlines",
+      "properties": {
+        "application_deadline": "string",
+        "welcome_offer_deadline": "string",
+        "intro_rate_deadline": "string",
+        "bonus_category_deadline": "string"
+      }
+    },
+    "special_offers": {
+      "type": "array",
+      "description": "Additional promotional offers",
+      "items": {
+        "type": "object",
+        "properties": {
+          "offer_type": "string",
+          "offer_details": "string",
+          "requirements": "string",
+          "expiration": "string"
+        }
+      }
+    },
+    "application_information": {
+      "type": "object",
+      "description": "How to apply and contact details",
+      "properties": {
+        "application_url": "string",
+        "phone_number": "string",
+        "mailing_address": "string",
+        "pre_approval_available": "string",
+        "instant_approval": "string"
+      }
+    },
+    "terms_and_conditions": {
+      "type": "string",
+      "description": "Key terms, conditions, and disclaimers"
+    },
+    "card_features": {
+      "type": "array",
+      "description": "Additional card features and benefits",
+      "items": {
+        "type": "string"
+      }
+    },
+    "annual_fee_waiver": {
+      "type": "object",
+      "description": "Annual fee waiver conditions",
+      "properties": {
+        "waiver_conditions": "string",
+        "first_year_free": "string",
+        "military_waiver": "string",
+        "spending_threshold": "string"
+      }
+    }
+  }
+}
