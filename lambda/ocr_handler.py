@@ -160,6 +160,8 @@ def lambda_handler(event, context):
             }
         )
         
+        print(f"Updated DynamoDB with textract_jobs: {textract_jobs}")
+        
         # Check if all OCR jobs are complete
         all_complete = True
         for page_key in pages:
@@ -172,14 +174,22 @@ def lambda_handler(event, context):
             if is_single_page and job_id == 'SYNC_COMPLETE':
                 # Single page synchronous processing is complete
                 continue
+            elif not is_single_page and job_id == 'ASYNC_COMPLETE':
+                # Multi-page async processing is complete
+                continue
             elif not is_single_page:
                 # Multi-page async processing - check job status
                 try:
                     response = textract.get_document_text_detection(JobId=job_id)
-                    if response['JobStatus'] != 'SUCCEEDED':
+                    if response['JobStatus'] == 'SUCCEEDED':
+                        # Job completed successfully, mark as complete
+                        textract_jobs[page_key] = 'ASYNC_COMPLETE'
+                        print(f"Textract job {job_id} completed successfully for {page_key}")
+                    else:
                         all_complete = False
                         break
-                except:
+                except Exception as e:
+                    print(f"Error checking Textract job {job_id}: {str(e)}")
                     all_complete = False
                     break
             else:

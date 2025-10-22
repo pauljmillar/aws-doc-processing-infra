@@ -408,6 +408,7 @@ data "archive_file" "llm_zip" {
   output_path = "${path.module}/lambda/llm_handler.zip"
 }
 
+
 # -----------------------
 # Lambda Functions
 # -----------------------
@@ -417,6 +418,8 @@ resource "aws_lambda_function" "ingest" {
   handler       = "ingest_handler.lambda_handler"
   runtime       = "python3.11"
   role          = aws_iam_role.lambda_exec.arn
+  timeout       = 60
+  memory_size   = 256
 
   environment {
     variables = {
@@ -435,6 +438,8 @@ resource "aws_lambda_function" "ocr" {
   handler       = "ocr_handler.lambda_handler"
   runtime       = "python3.11"
   role          = aws_iam_role.lambda_exec.arn
+  timeout       = 300
+  memory_size   = 512
 
   environment {
     variables = {
@@ -522,6 +527,7 @@ resource "aws_lambda_function" "llm" {
   }
 }
 
+
 # Allow SQS to trigger ingest lambda
 resource "aws_lambda_event_source_mapping" "sqs_trigger" {
   event_source_arn = aws_sqs_queue.incoming.arn
@@ -545,6 +551,7 @@ resource "aws_lambda_event_source_mapping" "pii_sqs_trigger" {
   batch_size       = 5  # Smaller batch for PII processing
   enabled          = true
 }
+
 
 # -----------------------
 # Step Functions Workflow

@@ -1,0 +1,13 @@
+{
+  "document_id": "485cbc5e-fe4a-43c1-a586-7b227d52040e",
+  "pages": [
+    "incoming/PATMULmobile1027414610TEST6-0.jpeg",
+    "incoming/PATMULmobile1027414610TEST6-1.jpeg"
+  ],
+  "bucket_name": "docproc-bucket",
+  "status": "ocr_in_progress",
+  "textract_jobs": {
+    "incoming/PATMULmobile1027414610TEST6-0.jpeg": "SYNC_COMPLETE",
+    "incoming/PATMULmobile1027414610TEST6-1.jpeg": "42bc4270e9a9eaf3285d7b4cd9769697edd362bbef900fcb03592c7983eff075"
+  }
+}
