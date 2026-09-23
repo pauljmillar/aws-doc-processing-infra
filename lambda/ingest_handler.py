@@ -36,46 +36,55 @@ def lambda_handler(event, context):
             s3_record = s3_event['Records'][0]
             s3_object = s3_record['s3']['object']
             filename = s3_object['key']
-            
+
             print(f"Processing file: {filename}")
-            
+
             # Extract base filename (remove page number and extension)
             base_filename = extract_base_filename(filename)
-            print(f"Base filename: {base_filename}")
-            
+            has_page_suffix = is_paginated_filename(filename)
+            print(f"Base filename: {base_filename} (paginated: {has_page_suffix})")
+
             # Validate file type
             if not validate_file_type(s3, bucket_name, filename):
                 print(f"Skipping file with invalid type: {filename}")
                 continue
-            
-            # Check if a document with this base filename already exists
-            existing_document = find_existing_document(table, base_filename)
+
+            # Check if an in-flight (non-terminal) document with this base filename
+            # already exists. Terminal (COMPLETE/FAILED) documents don't count - the
+            # same base filename can legitimately be re-uploaded and reprocessed later.
+            existing_document = find_active_document(table, base_filename)
             if existing_document:
-                print(f"Document with base filename '{base_filename}' already exists: {existing_document['document_id']}")
+                print(f"Active document with base filename '{base_filename}' already exists: {existing_document['document_id']}")
                 print(f"Skipping processing to avoid duplicate documents")
                 continue
-            
-            # Get all files with the same base name
-            all_files = get_files_with_base_name(s3, bucket_name, base_filename)
-            print(f"Found {len(all_files)} files with base name '{base_filename}': {all_files}")
-            
-            if len(all_files) == 1:
-                # Single file - process immediately
-                print(f"Single file detected - processing immediately: {filename}")
+
+            # Atomically claim the right to process this base filename. Without this,
+            # two pages of the same multi-page document (e.g. tulane_1.jpg and
+            # tulane_2.jpg) uploaded together can trigger two concurrent Lambda
+            # invocations that both pass the check above before either has written a
+            # document record, each creating its own duplicate document/execution for
+            # the same pages - or, if one invocation lists S3 before the sibling page
+            # has landed, orphaning that page outside of any document entirely.
+            if not acquire_processing_lock(table, base_filename):
+                print(f"Another invocation is already claiming '{base_filename}', skipping")
+                continue
+
+            try:
+                if has_page_suffix:
+                    # This filename looks like one page of a multi-page document.
+                    # Always give sibling pages a window to land in S3 before we
+                    # finalize the page list, even if we currently only see this one -
+                    # the sibling's upload may simply not have completed yet.
+                    print(f"Paginated filename detected - waiting 3 seconds to collect sibling pages...")
+                    time.sleep(3)
+
+                all_files = get_files_with_base_name(s3, bucket_name, base_filename)
+                print(f"Found {len(all_files)} files with base name '{base_filename}': {all_files}")
+
                 process_document(s3, bucket_name, table, stepfunctions, state_machine_arn, all_files, base_filename)
-                processed_documents.append(filename)
-            else:
-                # Multiple files - wait 3 seconds for more files to arrive
-                print(f"Multiple files detected - waiting 3 seconds for more files...")
-                time.sleep(3)
-                
-                # Check again for any additional files
-                final_files = get_files_with_base_name(s3, bucket_name, base_filename)
-                print(f"After 3-second wait, found {len(final_files)} files: {final_files}")
-                
-                # Process all files together as a single document
-                process_document(s3, bucket_name, table, stepfunctions, state_machine_arn, final_files, base_filename)
-                processed_documents.extend(final_files)
+                processed_documents.extend(all_files)
+            finally:
+                release_processing_lock(table, base_filename)
         
         return {
             'statusCode': 200,
@@ -87,34 +96,91 @@ def lambda_handler(event, context):
         print(f"Error in ingest handler: {str(e)}")
         raise
 
-def find_existing_document(table, base_filename):
-    """Find existing document with the same base filename."""
+def find_active_document(table, base_filename):
+    """Find a non-terminal (still in-flight) document with the same base filename.
+
+    A document that already reached COMPLETE or FAILED does not block a fresh
+    upload of the same base filename - only an in-flight one does, since that
+    signals another invocation is (or was very recently) handling these exact
+    pages.
+    """
     try:
         # Scan for documents with matching original_filename
         response = table.scan(
-            FilterExpression='original_filename = :base_filename',
+            FilterExpression='original_filename = :base_filename AND #status <> :complete AND #status <> :failed',
+            ExpressionAttributeNames={
+                '#status': 'status'
+            },
             ExpressionAttributeValues={
-                ':base_filename': base_filename
+                ':base_filename': base_filename,
+                ':complete': 'COMPLETE',
+                ':failed': 'FAILED'
             }
         )
-        
+
         if response['Items']:
             return response['Items'][0]  # Return the first match
         return None
-        
+
     except Exception as e:
-        print(f"Error finding existing document for '{base_filename}': {str(e)}")
+        print(f"Error finding active document for '{base_filename}': {str(e)}")
         return None
+
+def acquire_processing_lock(table, base_filename, ttl_seconds=30):
+    """Atomically claim the right to process a base filename.
+
+    Uses a conditional write on the same table (with a reserved document_id
+    prefix that can never collide with a real UUID document_id) so that, when
+    two Lambda invocations race to handle sibling pages of the same document,
+    only one of them proceeds. The lock carries a short TTL (also enforced by
+    the table's native TTL attribute) so a crashed invocation can never wedge
+    a base filename permanently.
+    """
+    lock_id = f"__lock__{base_filename}"
+    now = int(time.time())
+    try:
+        table.put_item(
+            Item={
+                'document_id': lock_id,
+                'status': 'LOCK',
+                'ttl': now + ttl_seconds,
+                'created_at': datetime.utcnow().isoformat()
+            },
+            ConditionExpression='attribute_not_exists(document_id) OR #ttl < :now',
+            ExpressionAttributeNames={'#ttl': 'ttl'},
+            ExpressionAttributeValues={':now': now}
+        )
+        return True
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+            return False
+        print(f"Error acquiring processing lock for '{base_filename}': {str(e)}")
+        return False
+
+def release_processing_lock(table, base_filename):
+    """Release a lock acquired with acquire_processing_lock. Best-effort: the
+    lock's own TTL is the real safety net if this fails."""
+    try:
+        table.delete_item(Key={'document_id': f"__lock__{base_filename}"})
+    except Exception as e:
+        print(f"Error releasing processing lock for '{base_filename}': {str(e)}")
+
+def is_paginated_filename(filename):
+    """Return True if the filename matches the multi-page pattern
+    (basename_N.ext or basename-N.ext), i.e. it may have sibling pages."""
+    basename = os.path.basename(filename)
+    pattern = r'^(.+?)[_-](\d+)\.(.+)$'
+    return re.match(pattern, basename) is not None
 
 def extract_base_filename(filename):
     """Extract base filename by removing page number and extension."""
     # Remove path
     basename = os.path.basename(filename)
-    
+
     # Pattern to match: basename-page.ext or basename_page.ext
     pattern = r'^(.+?)[_-](\d+)\.(.+)$'
     match = re.match(pattern, basename)
-    
+
     if match:
         return match.group(1)
     else:
