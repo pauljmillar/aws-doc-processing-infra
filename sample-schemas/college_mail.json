@@ -1,0 +1,108 @@
+{
+  "description": "Extract detailed information from college/university recruitment mail sent to prospective students (postcards, letters, admissions mailers)",
+  "fields": {
+    "institution_name": {
+      "type": "string",
+      "description": "Name of the college or university sending the mail",
+      "required": true
+    },
+    "mail_type": {
+      "type": "string",
+      "description": "Type of recruitment mail",
+      "enum": ["admissions_invitation", "application_reminder", "financial_aid_info", "campus_visit_invitation", "scholarship_offer", "program_spotlight", "general_marketing", "other"]
+    },
+    "headline": {
+      "type": "string",
+      "description": "Main headline or hook of the mailer"
+    },
+    "call_to_action": {
+      "type": "string",
+      "description": "Primary action requested, e.g. 'Start Your Application', 'Schedule a Visit'"
+    },
+    "application_details": {
+      "type": "object",
+      "description": "Application process details",
+      "properties": {
+        "application_platform": "string",
+        "application_fee_waived": "boolean",
+        "supplemental_essays_required": "boolean",
+        "priority_deadline": "string",
+        "regular_deadline": "string",
+        "early_decision_deadline": "string",
+        "early_action_deadline": "string"
+      }
+    },
+    "admission_criteria": {
+      "type": "object",
+      "description": "What the school says it looks for in applicants",
+      "properties": {
+        "factors_considered": "array",
+        "gpa_scale": "string",
+        "test_optional": "boolean",
+        "demonstrated_interest_matters": "boolean"
+      }
+    },
+    "financial_aid": {
+      "type": "object",
+      "description": "Financial aid, scholarship, or cost information",
+      "properties": {
+        "scholarships_mentioned": "array",
+        "need_based_aid_mentioned": "boolean",
+        "merit_based_aid_mentioned": "boolean",
+        "estimated_cost_mentioned": "string",
+        "net_price_calculator_mentioned": "boolean"
+      }
+    },
+    "campus_engagement": {
+      "type": "object",
+      "description": "Ways to engage with the school before applying",
+      "properties": {
+        "campus_tour_offered": "boolean",
+        "virtual_event_offered": "boolean",
+        "local_event_mentioned": "boolean",
+        "admission_counselor_contact": "string"
+      }
+    },
+    "programs_highlighted": {
+      "type": "array",
+      "description": "Specific academic programs, majors, or schools within the university highlighted",
+      "items": {
+        "type": "string"
+      }
+    },
+    "rankings_or_awards": {
+      "type": "array",
+      "description": "Any rankings, awards, or accolades mentioned",
+      "items": {
+        "type": "string"
+      }
+    },
+    "contact_information": {
+      "type": "object",
+      "description": "How to get in touch or learn more",
+      "properties": {
+        "office_name": "string",
+        "address": "string",
+        "phone_number": "string",
+        "website": "string",
+        "qr_code_present": "boolean"
+      }
+    },
+    "personalization": {
+      "type": "object",
+      "description": "Signs the mail was personalized to the recipient",
+      "properties": {
+        "recipient_named": "boolean",
+        "recipient_high_school_mentioned": "boolean",
+        "recipient_location_referenced": "boolean"
+      }
+    },
+    "key_dates": {
+      "type": "array",
+      "description": "Test dates, event dates, or other deadlines mentioned that aren't application deadlines",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

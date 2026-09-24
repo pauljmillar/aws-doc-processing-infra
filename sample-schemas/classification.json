@@ -3,8 +3,8 @@
   "fields": {
     "document_type": {
       "type": "string",
-      "description": "Type of document - must be one of: promotion, invoice, receipt, contract, letter, other",
-      "enum": ["promotion", "invoice", "receipt", "contract", "letter", "other"],
+      "description": "Type of document - must be one of: promotion, invoice, receipt, contract, letter, college_mail, other",
+      "enum": ["promotion", "invoice", "receipt", "contract", "letter", "college_mail", "other"],
       "required": true
     },
     "confidence": {
@@ -14,13 +14,13 @@
     },
     "industry": {
       "type": "string",
-      "description": "Industry classification - must be one of: Credit Card, Banking, Insurance, Investment, Mortgage & Loans, Retail, Shipping, Technology, Telecoms, Travel, Auto, Tobacco",
-      "enum": ["Credit Card", "Banking", "Insurance", "Investment", "Mortgage & Loans", "Retail", "Shipping", "Technology", "Telecoms", "Travel", "Auto", "Tobacco"],
+      "description": "Industry classification - must be one of: Credit Card, Banking, Insurance, Investment, Mortgage & Loans, Retail, Shipping, Technology, Telecoms, Travel, Auto, Tobacco, Education",
+      "enum": ["Credit Card", "Banking", "Insurance", "Investment", "Mortgage & Loans", "Retail", "Shipping", "Technology", "Telecoms", "Travel", "Auto", "Tobacco", "Education"],
       "required": false
     },
     "category": {
       "type": "string",
-      "description": "Category within industry - for Credit Card industry: Affinity Cards, Balance Transfer, Charge Card, Co-Branded, Corporate, Lifestyle Cards, Credit Cards",
+      "description": "Category within industry - for Credit Card industry: Affinity Cards, Balance Transfer, Charge Card, Co-Branded, Corporate, Lifestyle Cards, Credit Cards. For Education industry: Undergraduate Admissions, Graduate Admissions, Financial Aid, Continuing Education",
       "required": false
     },
     "primary_company": {
