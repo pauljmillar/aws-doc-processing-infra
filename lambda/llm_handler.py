@@ -203,7 +203,8 @@ def process_document_with_llm(document_text, schemas, openai_key):
                 'insurance': 'insurance',
                 'receipt': 'invoice',  # Receipts can use invoice schema
                 'contract': 'invoice',  # Contracts can use invoice schema
-                'letter': 'invoice'     # Letters can use invoice schema
+                'letter': 'invoice',    # Letters can use invoice schema
+                'college_mail': 'college_mail'
             }
             
             # Map document type to schema name
@@ -241,11 +242,13 @@ Schema: {json.dumps(schema, indent=2)}
 
 IMPORTANT CLASSIFICATION GUIDELINES:
 - For document_type: Use "promotion" for ads, marketing materials, offers, deals, or promotional content (email, social media, direct mail, etc.)
+- For document_type: Use "college_mail" (not "promotion") for recruitment/admissions mail from a college or university to a prospective student - postcards, letters, or emails about applying, visiting campus, financial aid, or academic programs. Set industry to "Education" for these.
 - For promotions: Always set the industry field and primary_company field
 - For co-branded offers (e.g., "American Airlines Mastercard"): Set primary_company as the main brand (American Airlines) and secondary_company as the partner (Mastercard)
 - If document type is unclear, use "other"
 - Industry must be one of the exact values listed in the enum
 - For Credit Card industry, category should be one of the specific credit card categories listed
+- For Education industry, category should be one of: Undergraduate Admissions, Graduate Admissions, Financial Aid, Continuing Education
 
 Document Text:
 {document_text}
